@@ -1,0 +1,70 @@
+name: Build Linux AppImage (Unsigned)
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+jobs:
+  build-linux-unsigned:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: 'yarn'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Clean workspace
+        run: git clean -fdx
+
+      - name: Install frontend dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build unsigned Linux AppImage
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --verbose
+          packageManager: yarn
+
+      - name: Rename AppImage
+        run: |
+          OUTPUT_DIR=./src-tauri/target/release/bundle/appimage
+          ASSET_NAME=NoRiskClient-Linux
+          
+          echo "Output before rename:"
+          ls -R "$OUTPUT_DIR" || true
+          
+          mv "$OUTPUT_DIR"/*.AppImage "$OUTPUT_DIR/$ASSET_NAME.AppImage"
+          
+          echo "Output after rename:"
+          ls -R "$OUTPUT_DIR" || true
+        shell: bash
+
+      - name: Upload unsigned AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-linux-appimage
+          path: ./src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
